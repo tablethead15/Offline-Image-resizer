@@ -1,0 +1,99 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Media Resizer</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; max-width: 600px; margin: auto; }
+    .section { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    input, select, button { display: block; margin-top: 10px; width: 100%; padding: 10px; }
+    canvas, video { max-width: 100%; margin-top: 10px; }
+    #downloadLink { display: none; margin-top: 10px; }
+    #progress { margin-top: 10px; font-weight: bold; }
+  </style>
+</head>
+<body>  <h1>Free Media Resizer</h1>  <div class="section">
+    <label>Select an image or video:</label>
+    <input type="file" id="fileInput" accept="image/*,video/*">
+  </div>  <div class="section">
+    <label>Select resolution:</label>
+    <select id="resolution">
+      <option value="240">240p</option>
+      <option value="360">360p</option>
+      <option value="480">480p</option>
+      <option value="720">720p</option>
+      <option value="1080">1080p</option>
+      <option value="1440">2K (1440p)</option>
+      <option value="2160">4K (2160p)</option>
+    </select>
+    <button onclick="resizeMedia()">Resize</button>
+    <div id="progress"></div>
+  </div><canvas id="canvas" style="display:none;"></canvas> <video id="videoPreview" controls style="display:none;"></video> <a id="downloadLink" download>Download Resized Media</a>
+
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>  <script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    const ffmpeg = createFFmpeg({ log: true });
+
+    async function resizeMedia() {
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      const resolution = parseInt(document.getElementById('resolution').value);
+      const progress = document.getElementById('progress');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const downloadLink = document.getElementById('downloadLink');
+      const videoPreview = document.getElementById('videoPreview');
+
+      if (!file) {
+        progress.innerText = "Please select a file.";
+        return;
+      }
+
+      const fileType = file.type;
+      progress.innerText = "Processing...";
+
+      if (fileType.startsWith('image/')) {
+        const img = new Image();
+        img.onload = () => {
+          const aspectRatio = img.width / img.height;
+          canvas.height = resolution;
+          canvas.width = resolution * aspectRatio;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.style.display = "block";
+          videoPreview.style.display = "none";
+          canvas.toBlob(blob => {
+            const url = URL.createObjectURL(blob);
+            downloadLink.href = url;
+            downloadLink.download = `resized_${file.name}`;
+            downloadLink.textContent = "Download Resized Image";
+            downloadLink.style.display = "inline";
+            progress.innerText = "Image resized successfully.";
+          }, "image/jpeg", 0.9);
+        };
+        img.src = URL.createObjectURL(file);
+      } else if (fileType.startsWith('video/')) {
+        progress.innerText = "Loading FFmpeg...";
+        if (!ffmpeg.isLoaded()) {
+          await ffmpeg.load();
+        }
+        progress.innerText = "Resizing video... This may take a moment.";
+        const fileName = file.name;
+        const outputName = `resized_${fileName}`;
+        ffmpeg.FS('writeFile', fileName, await fetchFile(file));
+        await ffmpeg.run('-i', fileName, '-vf', `scale=-2:${resolution}`, '-c:a', 'copy', outputName);
+        const data = ffmpeg.FS('readFile', outputName);
+        const videoBlob = new Blob([data.buffer], { type: 'video/mp4' });
+        const videoUrl = URL.createObjectURL(videoBlob);
+        videoPreview.src = videoUrl;
+        videoPreview.style.display = "block";
+        canvas.style.display = "none";
+        downloadLink.href = videoUrl;
+        downloadLink.download = outputName;
+        downloadLink.textContent = "Download Resized Video";
+        downloadLink.style.display = "inline";
+        progress.innerText = "Video resized successfully.";
+      } else {
+        progress.innerText = "Unsupported file type.";
+      }
+    }
+  </script></body>
+</html>
